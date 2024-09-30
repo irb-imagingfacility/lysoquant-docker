@@ -1,6 +1,10 @@
 # Lysoquant server - in docker
 
-## With image from dockerhub
+The GPU version is tested to work on NVIDIA GTX 2070, GTX 2060, GTX 1080 and GTX 940 MX. It may not work on newer GPU cards (possibly after Turing architecture). In this case, use the CPU version (see below).
+
+## Running the container
+
+### GPU version
 
 1. Pull image from dockerhub:
 
@@ -11,10 +15,28 @@ docker pull dmorone/lysoquant:latest
 1. Run container
 
 ```
-docker run --rm -p 2222:22 --gpus all -it dmorone/lysoquant
+docker run --rm -p 2222:22 --gpus all -it dmorone/lysoquant:latest
 ```
 
-The config will ask you to provide a password for user `unetuser` (for your safety, you can decide to put a very simple one if you want), then will create a client key. Copy all text to a new text file on client
+The config will ask you to provide a password for user `unetuser` (just put a very simple one, it won't be asked again afterwards), then will create a client key. Copy all text to a new text file on client
+
+### CPU version
+
+1. Pull image from dockerhub:
+
+```
+docker pull dmorone/lysoquant:cpu
+```
+
+1. Run container
+
+```
+docker run --rm -p 2222:22 --cpus 24 -e threads 24 -it dmorone/lysoquant:cpu
+```
+
+The config will ask you to provide a password for user `unetuser` (just put a very simple one, it won't be asked again afterwards), then will create a client key. Copy all text to a new text file on client
+
+## Client config
 
 1. Download latest release from github.com/irb-imagingfacility/lysoquant and unpack
 
@@ -38,6 +60,7 @@ Run this as test. If working, you should get a grey image. You can close both th
 1. In ImageJ menu, go to Edit > Options > Lysoquant Settings... and check that all settings have been copied from U-Net. Save and close
 
 1. Open a multichannel image and run Analyze > Lysoquant
+
 
 ## To compile from scratch
 
