@@ -1,0 +1,73 @@
+FROM ubuntu:18.04
+
+ENV uid=1000
+ENV gid=1000
+ENV USER=unetuser
+
+# suppress tzdata prompts
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get install -y sudo wget unzip openssh-server git build-essential \
+      cmake libxml2 libboost-system-dev libboost-thread-dev libboost-filesystem-dev \
+      libprotobuf-dev protobuf-compiler libhdf5-serial-dev libatlas-base-dev \
+      libgoogle-glog-dev python3-dev python3-numpy libboost-python-dev \
+      software-properties-common libssl-dev openssl libopenblas-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install recent CMake
+RUN wget https://cmake.org/files/v3.23/cmake-3.23.5-linux-x86_64.tar.gz && \
+    tar zxvf cmake-3.23.5-linux-x86_64.tar.gz -C /opt && \
+    ln -sf /opt/cmake-3.23.5-linux-x86_64/bin/* /usr/local/bin && \
+    rm -rf cmake-3.23.5-linux-x86_64.tar.gz
+
+RUN useradd -m -s /bin/bash ${USER} && \
+    echo "${USER} ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/${USER}
+
+USER ${USER}
+ENV HOME=/home/${USER}
+WORKDIR ${HOME}
+
+# Setup environment
+RUN echo ". ~/.bashrc" > .profile && \
+    echo "COL=\"\\\\[\\\\033[0;33m\\\\]\"" > .bashrc && \
+    echo "COL2=\"\\\\[\\\\033[1;31m\\\\]\"" >> .bashrc && \
+    echo "NOCOL=\"\\\\[\\\\033[m\\\\]\"" >> .bashrc && \
+    echo "export PS1=\"\${COL}\\\\u@\\\\h:\\\\w$ \${NOCOL}\"" >> .bashrc && \
+    git clone https://github.com/BVLC/caffe.git && \
+    cd caffe && \
+    git checkout 99bd99795dcdf0b1d3086a8d67ab1782a8a08383 && \
+    wget -nv --no-check-certificate https://lmb.informatik.uni-freiburg.de/lmbsoft/unet/caffe_unet_99bd99_20190109.patch && \
+    git apply caffe_unet_99bd99_20190109.patch && \
+    mkdir x86_64 && \
+    cd x86_64 && \
+    cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG" \
+    	  -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG" -DCPU_ONLY=OFF \
+	  -DUSE_OPENMP=ON -DCMAKE_INSTALL_PREFIX=/usr/local \
+	  -DBUILD_SHARED_LIBS=ON -DBUILD_docs=OFF \
+	  -DBUILD_matlab=OFF -DUSE_OPENCV=OFF -DUSE_LEVELDB=OFF \
+	  -DUSE_LMDB=OFF -DUSE_NCCL=OFF -DBUILD_python=OFF \
+	  -DCPU_ONLY=ON -DBLAS=open  \
+          .. && \
+    make -j && sudo make install
+
+COPY lysoquant.tgz ${HOME} 
+
+RUN tar xzf lysoquant.tgz && rm lysoquant.tgz
+
+ARG threads=4
+
+SHELL ["/bin/bash", "-c"]
+ENTRYPOINT export OPENBLAS_NUM_THREADS=${threads} && \
+           echo "== Set password for unetuser == " && \
+           sudo passwd unetuser && \
+	   ssh-keygen -t rsa -b 2048 -q -N "" -f ${HOME}/.ssh/id_rsa -C "lysoquant-server" && \
+	   ssh-keygen -t rsa -b 2048 -q -N "" -f ${HOME}/.ssh/lysoquant-client -C "lysoquant-client" && \
+           touch ${HOME}/.ssh/authorized_keys && \
+	   chmod 600 ${HOME}/.ssh/authorized_keys && \
+           cat ${HOME}/.ssh/lysoquant-client.pub >> ${HOME}/.ssh/authorized_keys && \
+           sudo service ssh start && \
+           sudo rm /etc/sudoers.d/${USER} && \
+	   echo "== Copy this to your client and use as Lysoquant RSA KEY ==" && \
+           cat ${HOME}/.ssh/lysoquant-client && \ 
+	   /bin/bash
